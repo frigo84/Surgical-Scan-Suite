@@ -120,6 +120,7 @@ export default function NewCasePage() {
   const [formErrors, setFormErrors] = useState<string[]>([]);
   const [draftSavedAt, setDraftSavedAt] = useState<Date | null>(null);
   const [draftRestored, setDraftRestored] = useState(false);
+  const [draftEnabled, setDraftEnabled] = useState(true);
 
   const restoreStoredCase = useCallback((c: StoredCase) => {
     const implantType = c.implantSystem.includes("CR") || c.procedureType.includes("CR")
@@ -154,40 +155,56 @@ export default function NewCasePage() {
 
   // Restore a saved case, draft, or generate new case code on mount
   useEffect(() => {
+    let restoreDraft = false;
+
     try {
-      const caseId = new URLSearchParams(window.location.search).get("caseId");
+      const params = new URLSearchParams(window.location.search);
+      const caseId = params.get("caseId");
+      restoreDraft = params.get("draft") === "1";
       if (caseId) {
         const saved = loadCase(caseId);
         if (saved) {
+          setDraftEnabled(true);
           restoreStoredCase(saved);
           return;
         }
       }
     } catch { /* ignore URL parsing errors */ }
 
-    try {
-      const raw = localStorage.getItem(DRAFT_KEY);
-      if (raw) {
-        const d = JSON.parse(raw);
-        if (d.savedCaseId) setSavedCaseId(d.savedCaseId);
-        if (d.caseInfo) setCaseInfo(d.caseInfo);
-        if (d.preOp) setPreOp(d.preOp);
-        if (d.intraOp) setIntraOp(d.intraOp);
-        if (d.timeLog) setTimeLog(d.timeLog);
-        if (d.initialAssessment) setInitialAssessment({ ...EMPTY_ASSESSMENT, ...d.initialAssessment });
-        if (d.trial1) setTrial1({ ...EMPTY_TRIAL, ...d.trial1 });
-        if (d.mps !== undefined) setMps(d.mps);
-        if (d.procedureVariant !== undefined) setProcedureVariant(d.procedureVariant);
-        if (d.savedAt) setDraftSavedAt(new Date(d.savedAt));
-        setDraftRestored(true);
-        return;
-      }
-    } catch { /* corrupt draft — ignore */ }
+    if (restoreDraft) {
+      try {
+        const raw = localStorage.getItem(DRAFT_KEY);
+        if (raw) {
+          const d = JSON.parse(raw);
+          if (d.savedCaseId) setSavedCaseId(d.savedCaseId);
+          if (d.caseInfo) setCaseInfo(d.caseInfo);
+          if (d.preOp) setPreOp(d.preOp);
+          if (d.intraOp) setIntraOp(d.intraOp);
+          if (d.timeLog) setTimeLog(d.timeLog);
+          if (d.initialAssessment) setInitialAssessment({ ...EMPTY_ASSESSMENT, ...d.initialAssessment });
+          if (d.trial1) setTrial1({ ...EMPTY_TRIAL, ...d.trial1 });
+          if (d.mps !== undefined) setMps(d.mps);
+          if (d.procedureVariant !== undefined) setProcedureVariant(d.procedureVariant);
+          if (d.savedAt) setDraftSavedAt(new Date(d.savedAt));
+          setDraftEnabled(true);
+          setDraftRestored(true);
+          return;
+        }
+      } catch { /* corrupt draft — ignore */ }
+    }
+
+    try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
+    setDraftEnabled(false);
+    setSavedCaseId(null);
+    setDraftSavedAt(null);
+    setDraftRestored(false);
     setCaseInfo((p) => ({ ...p, caseCode: generateCaseCode() }));
   }, [restoreStoredCase]);
 
   // Auto-save draft on every change (debounced 600ms)
   useEffect(() => {
+    if (!draftEnabled) return;
+
     const timer = setTimeout(() => {
       try {
         const now = new Date();
@@ -201,7 +218,7 @@ export default function NewCasePage() {
       } catch { /* storage full or unavailable */ }
     }, 600);
     return () => clearTimeout(timer);
-  }, [savedCaseId, caseInfo, mps, procedureVariant, preOp, intraOp, timeLog, initialAssessment, trial1]);
+  }, [draftEnabled, savedCaseId, caseInfo, mps, procedureVariant, preOp, intraOp, timeLog, initialAssessment, trial1]);
 
   const addScreenshots = useCallback((files: File[]) => {
     const items: ScreenshotItem[] = files
@@ -266,6 +283,7 @@ export default function NewCasePage() {
       ? updateCase(savedCaseId, casePayload()) ?? saveCase(casePayload())
       : saveCase(casePayload());
     if (saved) setSavedCaseId(saved.id);
+    setDraftEnabled(true);
     setSaveStatus("saved");
     setDraftRestored(false);
   };

@@ -10,6 +10,8 @@ import {
 import { Navbar } from "@/components/Navbar";
 import { loadCases, deleteCase, type StoredCase } from "@/lib/storage";
 
+const DRAFT_KEY = "autodoc_draft_v1";
+
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-US", {
     month: "short",
@@ -352,9 +354,11 @@ function CaseCard({ c, onDelete }: { c: StoredCase; onDelete: (id: string) => vo
 export default function CasesPage() {
   const [cases, setCases] = useState<StoredCase[]>([]);
   const [mounted, setMounted] = useState(false);
+  const [hasDraft, setHasDraft] = useState(false);
 
   useEffect(() => {
     setCases(loadCases());
+    setHasDraft(Boolean(localStorage.getItem(DRAFT_KEY)));
     setMounted(true);
   }, []);
 
@@ -376,6 +380,14 @@ export default function CasesPage() {
             : "No cases saved yet"}
         </p>
         <div className="flex items-center gap-2">
+          {hasDraft && (
+            <Link
+              href="/cases/new?draft=1"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-medium text-amber-400 border border-amber-500/25 bg-amber-500/5 hover:bg-amber-500/10 transition-all"
+            >
+              Resume Draft
+            </Link>
+          )}
           {cases.length > 0 && (
             <button
               onClick={() => exportCsv(cases)}
