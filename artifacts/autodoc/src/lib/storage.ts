@@ -158,6 +158,24 @@ export function saveCase(data: Omit<StoredCase, "id" | "createdAt">): StoredCase
   return newCase;
 }
 
+export function loadCase(id: string): StoredCase | null {
+  return loadCases().find((c) => c.id === id) ?? null;
+}
+
+export function updateCase(id: string, data: Omit<StoredCase, "id" | "createdAt">): StoredCase | null {
+  const cases = loadCases();
+  const existing = cases.find((c) => c.id === id);
+  if (!existing) return null;
+
+  const updated: StoredCase = {
+    ...data,
+    id,
+    createdAt: existing.createdAt,
+  };
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(cases.map((c) => c.id === id ? updated : c)));
+  return updated;
+}
+
 export function deleteCase(id: string): void {
   const cases = loadCases().filter((c) => c.id !== id);
   localStorage.setItem(STORAGE_KEY, JSON.stringify(cases));

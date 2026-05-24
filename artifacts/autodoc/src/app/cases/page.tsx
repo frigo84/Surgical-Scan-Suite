@@ -288,6 +288,13 @@ function CaseCard({ c, onDelete }: { c: StoredCase; onDelete: (id: string) => vo
               {c.procedureDate ? formatDate(c.procedureDate + "T00:00:00") : formatDate(c.createdAt)}
             </div>
           </div>
+          <Link
+            href={`/cases/new?caseId=${encodeURIComponent(c.id)}`}
+            className="opacity-0 group-hover:opacity-100 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-accent border border-accent/25 bg-accent/5 hover:bg-accent/10 transition-all"
+          >
+            <Download size={12} />
+            Open / PDF
+          </Link>
           <button
             onClick={() => onDelete(c.id)}
             className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg text-slate-600 hover:text-red-400 hover:bg-red-500/10 transition-all"

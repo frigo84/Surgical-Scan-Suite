@@ -9,8 +9,11 @@ import { Navbar } from "@/components/Navbar";
 import { OperativeRecordForm } from "@/components/OperativeRecordForm";
 import {
   saveCase,
+  loadCase,
+  updateCase,
   generateCaseCode,
   TIME_LOG_KEYS,
+  type StoredCase,
   type PlanningTable,
   type InitialAssessment,
   type TrialEntry,
@@ -90,6 +93,7 @@ function StepIndicator({ step }: { step: Step }) {
 
 export default function NewCasePage() {
   const [step, setStep] = useState<Step>(1);
+  const [savedCaseId, setSavedCaseId] = useState<string | null>(null);
 
   const [caseInfo, setCaseInfo] = useState<SimpleCaseInfo>({
     caseCode: "", procedureDate: "", surgeon: "", site: "", side: "", implantType: "", notes: "",
@@ -117,12 +121,55 @@ export default function NewCasePage() {
   const [draftSavedAt, setDraftSavedAt] = useState<Date | null>(null);
   const [draftRestored, setDraftRestored] = useState(false);
 
-  // Restore draft or generate new case code on mount
+  const restoreStoredCase = useCallback((c: StoredCase) => {
+    const implantType = c.implantSystem.includes("CR") || c.procedureType.includes("CR")
+      ? "CR"
+      : c.implantSystem.includes("PS") || c.procedureType.includes("PS")
+        ? "PS"
+        : "";
+
+    setSavedCaseId(c.id);
+    setCaseInfo({
+      caseCode: c.caseCode,
+      procedureDate: c.procedureDate,
+      surgeon: c.surgeon,
+      site: c.site,
+      side: c.side,
+      implantType,
+      notes: c.caseNotes,
+    });
+    setPreOp({ ...EMPTY_TABLE, ...(c.preOp ?? {}) });
+    setIntraOp({ ...EMPTY_TABLE, ...(c.intraOp ?? {}) });
+    setTimeLog({ ...EMPTY_TIME_LOG, ...(c.timeLog ?? {}) });
+    setInitialAssessment({ ...EMPTY_ASSESSMENT, ...(c.initialAssessment ?? {}) });
+    setTrial1({ ...EMPTY_TRIAL, ...(c.trial1 ?? {}) });
+    setMps(c.mps ?? "");
+    setProcedureVariant(c.procedureVariant ?? "");
+    setScreenshots([]);
+    setPdfBlob(null);
+    setPdfFilename("");
+    setSaveStatus("saved");
+    setDraftRestored(false);
+  }, []);
+
+  // Restore a saved case, draft, or generate new case code on mount
   useEffect(() => {
+    try {
+      const caseId = new URLSearchParams(window.location.search).get("caseId");
+      if (caseId) {
+        const saved = loadCase(caseId);
+        if (saved) {
+          restoreStoredCase(saved);
+          return;
+        }
+      }
+    } catch { /* ignore URL parsing errors */ }
+
     try {
       const raw = localStorage.getItem(DRAFT_KEY);
       if (raw) {
         const d = JSON.parse(raw);
+        if (d.savedCaseId) setSavedCaseId(d.savedCaseId);
         if (d.caseInfo) setCaseInfo(d.caseInfo);
         if (d.preOp) setPreOp(d.preOp);
         if (d.intraOp) setIntraOp(d.intraOp);
@@ -137,7 +184,7 @@ export default function NewCasePage() {
       }
     } catch { /* corrupt draft — ignore */ }
     setCaseInfo((p) => ({ ...p, caseCode: generateCaseCode() }));
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [restoreStoredCase]);
 
   // Auto-save draft on every change (debounced 600ms)
   useEffect(() => {
@@ -145,6 +192,7 @@ export default function NewCasePage() {
       try {
         const now = new Date();
         localStorage.setItem(DRAFT_KEY, JSON.stringify({
+          savedCaseId,
           caseInfo, mps, procedureVariant, preOp, intraOp,
           timeLog, initialAssessment, trial1,
           savedAt: now.toISOString(),
@@ -153,7 +201,7 @@ export default function NewCasePage() {
       } catch { /* storage full or unavailable */ }
     }, 600);
     return () => clearTimeout(timer);
-  }, [caseInfo, mps, procedureVariant, preOp, intraOp, timeLog, initialAssessment, trial1]);
+  }, [savedCaseId, caseInfo, mps, procedureVariant, preOp, intraOp, timeLog, initialAssessment, trial1]);
 
   const addScreenshots = useCallback((files: File[]) => {
     const items: ScreenshotItem[] = files
@@ -185,37 +233,40 @@ export default function NewCasePage() {
     if (validateForm()) setStep(2);
   };
 
+  const casePayload = (): Omit<StoredCase, "id" | "createdAt"> => ({
+    caseCode: caseInfo.caseCode,
+    procedureDate: caseInfo.procedureDate,
+    surgeon: caseInfo.surgeon,
+    site: caseInfo.site,
+    side: caseInfo.side as "left" | "right",
+    procedureType: caseInfo.implantType ? `${caseInfo.implantType} TKA` : "Robotic TKA",
+    implantSystem: caseInfo.implantType === "CR" ? "Triathlon CR" : caseInfo.implantType === "PS" ? "Triathlon PS" : "",
+    caseNotes: caseInfo.notes,
+    planning: {
+      femurSize: preOp.femurSize, tibiaSize: preOp.tibiaSize, polySize: trial1.insertSizeMm,
+      varusValgus: preOp.femurVarValg, flexion: preOp.femurExtFlex, externalRotation: preOp.femurIntAx,
+      posteriorSlope: preOp.tibiaSlope, medialResection: preOp.cutFemurDistalMed, lateralResection: preOp.cutTibiaMed,
+    },
+    laxity: {
+      extensionMedial: initialAssessment.laxityExtMed, extensionLateral: initialAssessment.laxityExtLat,
+      flexionMedial: initialAssessment.laxityFlexMed, flexionLateral: initialAssessment.laxityFlexLat,
+      nativeAlignment: initialAssessment.nativeAlignment, finalAlignment: initialAssessment.correctedAlignment, maxFlexion: "",
+    },
+    implant: {
+      manufacturer: "", implantSystem: caseInfo.implantType || "",
+      femurComponent: "", tibialComponent: "",
+      polyInsert: "", implantSize: "", ref: "", lot: "", expiryDate: "",
+    },
+    mps, procedureVariant, preOp, intraOp, timeLog, initialAssessment, trial1,
+  });
+
   const handleSave = () => {
     if (!validateForm()) return;
-    saveCase({
-      caseCode: caseInfo.caseCode,
-      procedureDate: caseInfo.procedureDate,
-      surgeon: caseInfo.surgeon,
-      site: caseInfo.site,
-      side: caseInfo.side as "left" | "right",
-      procedureType: caseInfo.implantType ? `${caseInfo.implantType} TKA` : "Robotic TKA",
-      implantSystem: caseInfo.implantType === "CR" ? "Triathlon CR" : caseInfo.implantType === "PS" ? "Triathlon PS" : "",
-      caseNotes: caseInfo.notes,
-      planning: {
-        femurSize: preOp.femurSize, tibiaSize: preOp.tibiaSize, polySize: trial1.insertSizeMm,
-        varusValgus: preOp.femurVarValg, flexion: preOp.femurExtFlex, externalRotation: preOp.femurIntAx,
-        posteriorSlope: preOp.tibiaSlope, medialResection: preOp.cutFemurDistalMed, lateralResection: preOp.cutTibiaMed,
-      },
-      laxity: {
-        extensionMedial: initialAssessment.laxityExtMed, extensionLateral: initialAssessment.laxityExtLat,
-        flexionMedial: initialAssessment.laxityFlexMed, flexionLateral: initialAssessment.laxityFlexLat,
-        nativeAlignment: initialAssessment.nativeAlignment, finalAlignment: initialAssessment.correctedAlignment, maxFlexion: "",
-      },
-      implant: {
-        manufacturer: "", implantSystem: caseInfo.implantType || "",
-        femurComponent: "", tibialComponent: "",
-        polyInsert: "", implantSize: "", ref: "", lot: "", expiryDate: "",
-      },
-      mps, procedureVariant, preOp, intraOp, timeLog, initialAssessment, trial1,
-    });
+    const saved = savedCaseId
+      ? updateCase(savedCaseId, casePayload()) ?? saveCase(casePayload())
+      : saveCase(casePayload());
+    if (saved) setSavedCaseId(saved.id);
     setSaveStatus("saved");
-    try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
-    setDraftSavedAt(null);
     setDraftRestored(false);
   };
 
