@@ -1,8 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { ReactNode } from "react";
 import Link from "next/link";
-import { Plus, ClipboardList, Calendar, Download, Trash2, User, Building2 } from "lucide-react";
+import {
+  Plus, ClipboardList, Calendar, Download, Trash2, User, Building2,
+  Activity, BarChart3, CircleGauge, PieChart,
+} from "lucide-react";
 import { Navbar } from "@/components/Navbar";
 import { loadCases, deleteCase, type StoredCase } from "@/lib/storage";
 
@@ -53,6 +57,182 @@ function exportCsv(cases: StoredCase[]) {
   a.download = `autodoc-cases-${new Date().toISOString().slice(0, 10)}.csv`;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+function pct(value: number, total: number) {
+  return total > 0 ? Math.round((value / total) * 100) : 0;
+}
+
+function hasAny(values: unknown[]) {
+  return values.some((v) => typeof v === "string" && v.trim() !== "");
+}
+
+function caseCompleteness(c: StoredCase) {
+  const areas = [
+    hasAny(Object.values(c.preOp ?? c.planning)),
+    hasAny(Object.values(c.intraOp ?? {})),
+    hasAny(Object.values(c.initialAssessment ?? c.laxity)),
+    hasAny(Object.values(c.trial1 ?? {})),
+  ];
+  return areas.filter(Boolean).length;
+}
+
+function StatTile({
+  icon,
+  label,
+  value,
+  detail,
+  tone = "accent",
+}: {
+  icon: ReactNode;
+  label: string;
+  value: string;
+  detail: string;
+  tone?: "accent" | "blue" | "purple" | "amber";
+}) {
+  const toneCls = {
+    accent: "text-accent bg-accent/10 border-accent/20",
+    blue: "text-blue-400 bg-blue-500/10 border-blue-500/20",
+    purple: "text-purple-400 bg-purple-500/10 border-purple-500/20",
+    amber: "text-amber-400 bg-amber-500/10 border-amber-500/20",
+  }[tone];
+
+  return (
+    <div className="rounded-2xl border border-surface-600 bg-surface-800/45 p-4 min-w-0">
+      <div className="flex items-center justify-between gap-3">
+        <div className={`shrink-0 p-2 rounded-xl border ${toneCls}`}>{icon}</div>
+        <span className="text-[10px] font-semibold text-slate-600 uppercase tracking-widest truncate">
+          {label}
+        </span>
+      </div>
+      <div className="mt-4">
+        <p className="text-2xl font-bold text-slate-100 tabular-nums">{value}</p>
+        <p className="text-xs text-slate-500 mt-0.5 truncate">{detail}</p>
+      </div>
+    </div>
+  );
+}
+
+function SplitBar({
+  leftLabel,
+  leftValue,
+  rightLabel,
+  rightValue,
+}: {
+  leftLabel: string;
+  leftValue: number;
+  rightLabel: string;
+  rightValue: number;
+}) {
+  const total = leftValue + rightValue;
+  const leftPct = pct(leftValue, total);
+  const rightPct = total > 0 ? 100 - leftPct : 0;
+
+  return (
+    <div>
+      <div className="flex items-center justify-between text-[10px] text-slate-500 uppercase tracking-wider mb-2">
+        <span>{leftLabel} {leftValue}</span>
+        <span>{rightLabel} {rightValue}</span>
+      </div>
+      <div className="h-3 rounded-full overflow-hidden bg-surface-700 border border-surface-600 flex">
+        <div className="h-full bg-blue-400" style={{ width: `${leftPct}%` }} />
+        <div className="h-full bg-purple-400" style={{ width: `${rightPct}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function MiniTrend({ cases }: { cases: StoredCase[] }) {
+  const monthCounts = new Map<string, number>();
+  cases.forEach((c) => {
+    const d = new Date(c.procedureDate ? `${c.procedureDate}T00:00:00` : c.createdAt);
+    if (Number.isNaN(d.getTime())) return;
+    const key = d.toLocaleDateString("en-US", { month: "short" });
+    monthCounts.set(key, (monthCounts.get(key) ?? 0) + 1);
+  });
+  const bars = Array.from(monthCounts.entries()).slice(-6);
+  const max = Math.max(1, ...bars.map(([, count]) => count));
+
+  return (
+    <div className="rounded-2xl border border-surface-600 bg-surface-800/45 p-4">
+      <div className="flex items-center gap-2 mb-4">
+        <BarChart3 size={14} className="text-accent" />
+        <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-widest">Recent Volume</span>
+      </div>
+      <div className="flex items-end gap-2 h-24">
+        {bars.length === 0 ? (
+          <div className="flex-1 text-xs text-slate-600">No dated cases yet</div>
+        ) : bars.map(([label, count]) => (
+          <div key={label} className="flex-1 min-w-0 flex flex-col items-center gap-2">
+            <div
+              className="w-full max-w-8 rounded-t-lg bg-accent/70 border border-accent/30"
+              style={{ height: `${Math.max(10, (count / max) * 72)}px` }}
+            />
+            <span className="text-[10px] text-slate-500 truncate">{label}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function CasesOverview({ cases }: { cases: StoredCase[] }) {
+  const left = cases.filter((c) => c.side === "left").length;
+  const right = cases.filter((c) => c.side === "right").length;
+  const cr = cases.filter((c) => c.implantSystem.includes("CR") || c.procedureType.includes("CR")).length;
+  const ps = cases.filter((c) => c.implantSystem.includes("PS") || c.procedureType.includes("PS")).length;
+  const completedAreas = cases.reduce((sum, c) => sum + caseCompleteness(c), 0);
+  const possibleAreas = cases.length * 4;
+  const completeness = pct(completedAreas, possibleAreas);
+  const withTimeline = cases.filter((c) => c.timeLog && Object.values(c.timeLog).some((e) => e.status === "recorded")).length;
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.4fr] gap-3">
+      <div className="grid grid-cols-2 gap-3">
+        <StatTile
+          icon={<ClipboardList size={16} />}
+          label="Cases"
+          value={String(cases.length)}
+          detail={`${withTimeline} with timeline`}
+        />
+        <StatTile
+          icon={<CircleGauge size={16} />}
+          label="Extraction"
+          value={`${completeness}%`}
+          detail={`${completedAreas}/${possibleAreas} areas captured`}
+          tone="amber"
+        />
+        <StatTile
+          icon={<Activity size={16} />}
+          label="Left"
+          value={`${pct(left, cases.length)}%`}
+          detail={`${left} left knees`}
+          tone="blue"
+        />
+        <StatTile
+          icon={<PieChart size={16} />}
+          label="Right"
+          value={`${pct(right, cases.length)}%`}
+          detail={`${right} right knees`}
+          tone="purple"
+        />
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr] gap-3">
+        <div className="rounded-2xl border border-surface-600 bg-surface-800/45 p-4 flex flex-col justify-between gap-5">
+          <div className="flex items-center gap-2">
+            <PieChart size={14} className="text-accent" />
+            <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-widest">Case Mix</span>
+          </div>
+          <div className="flex flex-col gap-5">
+            <SplitBar leftLabel="Left" leftValue={left} rightLabel="Right" rightValue={right} />
+            <SplitBar leftLabel="CR" leftValue={cr} rightLabel="PS" rightValue={ps} />
+          </div>
+        </div>
+        <MiniTrend cases={cases} />
+      </div>
+    </div>
+  );
 }
 
 function CaseCard({ c, onDelete }: { c: StoredCase; onDelete: (id: string) => void }) {
@@ -230,6 +410,7 @@ export default function CasesPage() {
           </div>
         ) : (
           <div className="flex flex-col gap-3 max-w-5xl mx-auto">
+            <CasesOverview cases={cases} />
             {cases.map((c) => (
               <CaseCard key={c.id} c={c} onDelete={handleDelete} />
             ))}
