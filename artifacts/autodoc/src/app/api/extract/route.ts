@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
 interface PromptConfig {
   system: string;
   user: string;
@@ -189,6 +187,10 @@ Use "" for any field not visible. No markdown, no extra text.`,
 
 export async function POST(request: NextRequest) {
   try {
+    if (!process.env.OPENAI_API_KEY) {
+      return NextResponse.json({ error: "OPENAI_API_KEY is not configured" }, { status: 500 });
+    }
+
     const formData = await request.formData();
     const file = formData.get("image");
     const screenType = (formData.get("screen_type") as string | null) ?? "intraop";
@@ -202,6 +204,7 @@ export async function POST(request: NextRequest) {
     const arrayBuffer = await file.arrayBuffer();
     const base64 = Buffer.from(arrayBuffer).toString("base64");
     const mimeType = file.type || "image/jpeg";
+    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
     const response = await openai.chat.completions.create({
       model: "gpt-4o",
