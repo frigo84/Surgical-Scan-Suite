@@ -1,0 +1,102 @@
+Now improve AutoDoc so the New Case workflow has a proper case form and asks for the necessary MAKO screenshots.
+
+Create a guided workflow at /cases/new with 3 steps:
+
+STEP 1 — Case Information Form
+Add a form with:
+- Procedure date
+- Surgeon
+- Site / hospital
+- Side: left or right
+- Procedure type: default "Robotic TKA"
+- Implant system: default "Triathlon PS"
+- Optional notes
+
+Do not ask for patient name, date of birth, MRN, address, or any identifiable patient data.
+
+Generate an anonymous case code automatically, like:
+AD-2026-0001
+
+STEP 2 — Required Screenshots
+Ask the user to upload the necessary MAKO screenshots.
+
+Create separate upload cards for:
+
+1. Implant Planning Screenshot
+Description:
+Upload the screen showing femur size, tibia size, poly size, varus/valgus, flexion, external rotation, posterior slope, and resection values.
+
+2. Balancing / Laxity Screenshot
+Description:
+Upload the screen showing extension medial/lateral laxity, flexion medial/lateral laxity, native alignment, final alignment, and max flexion.
+
+3. Final Alignment Screenshot
+Description:
+Upload the final case completion or final alignment screen.
+
+4. Implant Label Screenshot or Photo
+Description:
+Upload implant label images showing component name, size, REF, LOT, and expiry date.
+
+Each upload card should show:
+- required or optional status
+- image preview
+- upload/change image button
+- extraction status: not uploaded, ready, extracted, needs review
+
+For v1:
+- Implant Planning Screenshot is required
+- Balancing / Laxity Screenshot is required
+- Final Alignment Screenshot is optional
+- Implant Label Screenshot is optional
+
+STEP 3 — Extraction Review
+Add a button: "Run Extraction"
+
+When clicked:
+- Run extraction for each uploaded screenshot
+- Merge the extracted data into one case record
+- Show editable review sections:
+
+Planning Values:
+- Femur size
+- Tibia size
+- Poly size
+- Varus/valgus
+- Flexion/extension
+- External/internal rotation
+- Posterior slope
+- Medial/lateral resection values
+
+Laxity Values:
+- Extension medial
+- Extension lateral
+- Flexion medial
+- Flexion lateral
+- Native alignment
+- Final alignment
+- Max flexion
+
+Implant Data:
+- Manufacturer
+- Implant system
+- Femur component
+- Tibial component
+- Poly insert
+- Size
+- REF
+- LOT
+- Expiry date
+
+Add buttons:
+- Back
+- Run Extraction
+- Confirm & Save Case
+
+For now:
+- Use mock extraction values if there is no OpenAI API key
+- Save the final confirmed case to localStorage
+- Add validation that prevents saving if Procedure date, Surgeon, Side, Implant Planning Screenshot, or Balancing/Laxity Screenshot are missing.
+
+Keep the UI tablet-friendly, dark, clean, and professional.
+Use TypeScript, React state, and reusable components.
