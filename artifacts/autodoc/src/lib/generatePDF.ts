@@ -221,7 +221,7 @@ export async function generateCasePDF(
   }
 
   // ═══════════════════════════════════════════════════
-  // PAGE 1 — Case info + Planning tables
+  // PAGE 1 — Case info + timeline + extraction sections
   // ═══════════════════════════════════════════════════
   drawHeader("Operative Record");
   let y = 30;
@@ -249,18 +249,6 @@ export async function generateCasePDF(
     tableLineColor: c3(...BORDER), tableLineWidth: 0.25,
   });
   y = (doc as any).lastAutoTable.finalY + 5;
-
-  y = sectionHead("Pre-OP & Intra-OP Planning", y);
-  const preY   = drawPlanningTable("Pre-OP",   M,           y, preOp);
-  const intraY = drawPlanningTable("Intra-OP", M + HALF + 4, y, intraOp);
-  y = Math.max(preY, intraY) + 4;
-
-  // ═══════════════════════════════════════════════════
-  // PAGE 2 — Timeline + Initial Assessment + Trial
-  // ═══════════════════════════════════════════════════
-  doc.addPage();
-  drawHeader("Operative Record — continued");
-  y = 30;
 
   // ── Time badges ──────────────────────────────────────
   const tlRecorded = [...TIME_LOG_KEYS].filter(k => timeLog[k].status === "recorded" && timeLog[k].time);
@@ -309,7 +297,13 @@ export async function generateCasePDF(
 
   // Row 2
   const r2Bottom = drawTimelineRow(TL_ROW2, y);
-  y = r2Bottom + 7;
+  y = r2Bottom + 6;
+
+  // ── Four extraction areas ─────────────────────────────
+  y = sectionHead("Pre-OP & Intra-OP Planning", y);
+  const preY   = drawPlanningTable("Pre-OP",   M,           y, preOp);
+  const intraY = drawPlanningTable("Intra-OP", M + HALF + 4, y, intraOp);
+  y = Math.max(preY, intraY) + 5;
 
   // ── Initial Assessment + Trial side by side ──────────
   const LEFT_W  = CW * 0.52;
@@ -452,10 +446,9 @@ export async function generateCasePDF(
   // Screenshot pages — sorted: pre, intra, ia, trial, extras
   // ═══════════════════════════════════════════════════
   const sortedShots = sortScreenshots(screenshots);
-  const totalPages  = 2 + sortedShots.length;
+  const totalPages  = 1 + sortedShots.length;
 
   doc.setPage(1); drawFooter(1, totalPages);
-  doc.setPage(2); drawFooter(2, totalPages);
 
   for (let i = 0; i < sortedShots.length; i++) {
     const sc = sortedShots[i];
@@ -488,7 +481,7 @@ export async function generateCasePDF(
       doc.text("Image could not be loaded", W / 2, H / 2, { align: "center" });
     }
 
-    drawFooter(2 + i + 1, totalPages);
+    drawFooter(1 + i + 1, totalPages);
   }
 
   return doc.output("blob");
